@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { Check, Plus, Flame, X, Calendar, Trash2, ChevronLeft, ChevronRight, HelpCircle, LogOut, Camera, Utensils, ImagePlus } from "lucide-react";
+import { Check, Plus, Flame, X, Calendar, Trash2, ChevronLeft, ChevronRight, HelpCircle, LogOut, Camera, Utensils, ImagePlus, Clock } from "lucide-react";
 
 const PROFILES_KEY = "toggle-profiles-v1";
 const dataKey = (name) => `toggle-data-${name}`;
@@ -194,6 +194,7 @@ const TUTORIAL_STEPS = [
   { title: "Tasks have deadlines", body: "Add one-off things with a due date and priority. Overdue ones turn bright pink." },
   { title: "Daily photos", body: "The Photos tab is a calendar — pick a day, upload one or more photos, and jot a note. Great for a visual journal." },
   { title: "Food log", body: "The Diet tab estimates calories from what you type, using a rough built-in lookup — it's a ballpark, not medical advice." },
+  { title: "Honest hours", body: "The Hours tab lets you protect one hour at a time — set a finish line, track whatever you want inside it, then write an honest sentence about what actually happened." },
   { title: "You're set", body: "Tap the paw icon top-right anytime to replay this." },
 ];
 function Tutorial({ onClose }) {
@@ -350,6 +351,149 @@ function DietSection({ diet, setDiet }) {
   );
 }
 
+function HourBlockCard({ block, onUpdate, onRemove, onAddItem, onRemoveItem }) {
+  const [itemLabel, setItemLabel] = useState("");
+  const [itemValue, setItemValue] = useState("");
+  const [expanded, setExpanded] = useState(true);
+
+  function submitItem() {
+    if (!itemLabel.trim()) return;
+    onAddItem(itemLabel, itemValue);
+    setItemLabel("");
+    setItemValue("");
+  }
+
+  return (
+    <div className={"hour-card" + (block.done ? " reviewed" : "")}>
+      <div className="hour-card-head" onClick={() => setExpanded((e) => !e)}>
+        <Clock size={14} color="#ff2d78" />
+        <div className="hour-card-title">
+          {block.time && <span className="hour-time">{block.time}</span>}
+          <span className="hour-title-text">{block.title}</span>
+        </div>
+        {block.done && <span className="hour-done-badge">reviewed</span>}
+        <button className="delete-mini" onClick={(e) => { e.stopPropagation(); onRemove(); }}><Trash2 size={13} /></button>
+      </div>
+      {expanded && (
+        <div className="hour-card-body">
+          <label className="hour-field-label">Finish line — what does done look like?</label>
+          <input className="hour-input" placeholder="e.g. one section completed" value={block.finishLine} onChange={(e) => onUpdate({ finishLine: e.target.value })} />
+
+          <label className="hour-field-label">Add anything you want to track for this hour</label>
+          {block.items.length > 0 && (
+            <div className="hour-items">
+              {block.items.map((it) => (
+                <div key={it.id} className="hour-item-row">
+                  <span className="hour-item-label">{it.label}</span>
+                  <span className="hour-item-value">{it.value}</span>
+                  <button className="delete-mini" onClick={() => onRemoveItem(it.id)}><Trash2 size={12} /></button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="add-form-row">
+            <input placeholder="label — e.g. distractions removed" value={itemLabel} onChange={(e) => setItemLabel(e.target.value)} />
+            <input placeholder="value — e.g. phone in other room" value={itemValue} onChange={(e) => setItemValue(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitItem()} />
+          </div>
+          <button className="add-btn small-add" onClick={submitItem}><Plus size={14} /> add item</button>
+
+          <label className="hour-field-label">Honest review — what actually happened?</label>
+          <textarea className="hour-textarea" placeholder="one or two honest sentences…" value={block.review} onChange={(e) => onUpdate({ review: e.target.value })} rows={3} />
+
+          <button className={"mark-reviewed-btn" + (block.done ? " active" : "")} onClick={() => onUpdate({ done: !block.done })}>
+            <Check size={14} /> {block.done ? "marked reviewed" : "mark reviewed"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HonestHourSection({ hours, setHours }) {
+  const [dayAnchor, setDayAnchor] = useState(todayISO());
+  const dayHours = hours[dayAnchor] || [];
+  const [newTime, setNewTime] = useState("");
+  const [newTitle, setNewTitle] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
+
+  function addBlock() {
+    if (!newTitle.trim()) return;
+    const block = {
+      id: crypto.randomUUID(),
+      time: newTime.trim(),
+      title: newTitle.trim(),
+      finishLine: "",
+      items: [],
+      review: "",
+      done: false,
+    };
+    setHours((prev) => ({ ...prev, [dayAnchor]: [...(prev[dayAnchor] || []), block] }));
+    setNewTime("");
+    setNewTitle("");
+    setShowAdd(false);
+  }
+  function updateBlock(id, patch) {
+    setHours((prev) => ({
+      ...prev,
+      [dayAnchor]: (prev[dayAnchor] || []).map((b) => (b.id === id ? { ...b, ...patch } : b)),
+    }));
+  }
+  function removeBlock(id) {
+    setHours((prev) => ({ ...prev, [dayAnchor]: (prev[dayAnchor] || []).filter((b) => b.id !== id) }));
+  }
+  function addItem(blockId, label, value) {
+    if (!label.trim()) return;
+    setHours((prev) => ({
+      ...prev,
+      [dayAnchor]: (prev[dayAnchor] || []).map((b) =>
+        b.id === blockId ? { ...b, items: [...b.items, { id: crypto.randomUUID(), label: label.trim(), value: value.trim() }] } : b
+      ),
+    }));
+  }
+  function removeItem(blockId, itemId) {
+    setHours((prev) => ({
+      ...prev,
+      [dayAnchor]: (prev[dayAnchor] || []).map((b) =>
+        b.id === blockId ? { ...b, items: b.items.filter((i) => i.id !== itemId) } : b
+      ),
+    }));
+  }
+
+  return (
+    <section className="tg-section">
+      <div className="week-nav">
+        <button className="icon-btn" onClick={() => setDayAnchor(addDays(dayAnchor, -1))}><ChevronLeft size={17} /></button>
+        <div className="week-range">{fmtDate(dayAnchor)}{dayAnchor === todayISO() ? " · today" : ""}</div>
+        <button className="icon-btn" onClick={() => setDayAnchor(addDays(dayAnchor, 1))}><ChevronRight size={17} /></button>
+        {dayAnchor !== todayISO() && <button className="today-btn" onClick={() => setDayAnchor(todayISO())}>today</button>}
+      </div>
+      <p className="diet-disclaimer">Pick one hour, decide what it's for, protect it, then tell yourself the truth about what happened. Add whatever you want to track inside each hour.</p>
+      {dayHours.length === 0 && <div className="empty-state small">No hours logged for this day yet.</div>}
+      <div className="hour-list">
+        {dayHours.map((b) => (
+          <HourBlockCard
+            key={b.id}
+            block={b}
+            onUpdate={(p) => updateBlock(b.id, p)}
+            onRemove={() => removeBlock(b.id)}
+            onAddItem={(l, v) => addItem(b.id, l, v)}
+            onRemoveItem={(iid) => removeItem(b.id, iid)}
+          />
+        ))}
+      </div>
+      {!showAdd ? (
+        <button className="add-btn" onClick={() => setShowAdd(true)}><Plus size={16} /> add hour</button>
+      ) : (
+        <div className="add-form">
+          <input autoFocus placeholder="time (e.g. 9:00 AM) — optional" value={newTime} onChange={(e) => setNewTime(e.target.value)} />
+          <input placeholder="what is this hour for? e.g. write the opening section" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addBlock()} />
+          <div className="add-form-row"><button className="primary-btn" onClick={addBlock}>add</button><button className="ghost-btn" onClick={() => setShowAdd(false)}><X size={16} /></button></div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function TrackerApp({ profile, onSwitchProfile }) {
   const isWide = useIsWide();
   const storageKey = dataKey(profile);
@@ -358,6 +502,7 @@ function TrackerApp({ profile, onSwitchProfile }) {
   const [tasks, setTasks] = useState([]);
   const [photos, setPhotos] = useState({});
   const [diet, setDiet] = useState({});
+  const [hours, setHours] = useState({});
   const [tab, setTab] = useState("habits");
   const [weekAnchor, setWeekAnchor] = useState(startOfWeek(todayISO()));
   const [showAddHabit, setShowAddHabit] = useState(false);
@@ -377,6 +522,7 @@ function TrackerApp({ profile, onSwitchProfile }) {
       setTasks(parsed.tasks || []);
       setPhotos(parsed.photos || {});
       setDiet(parsed.diet || {});
+      setHours(parsed.hours || {});
     } catch {}
     setReady(true);
     if (!localStorage.getItem(`toggle-seen-tutorial-${profile}`)) setShowTutorial(true);
@@ -385,11 +531,11 @@ function TrackerApp({ profile, onSwitchProfile }) {
   useEffect(() => {
     if (!ready) return;
     try {
-      localStorage.setItem(storageKey, JSON.stringify({ habits, tasks, photos, diet }));
+      localStorage.setItem(storageKey, JSON.stringify({ habits, tasks, photos, diet, hours }));
     } catch (e) {
       console.error("save failed — storage may be full", e);
     }
-  }, [habits, tasks, photos, diet, ready, storageKey]);
+  }, [habits, tasks, photos, diet, hours, ready, storageKey]);
 
   const today = todayISO();
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekAnchor, i)), [weekAnchor]);
@@ -448,6 +594,7 @@ function TrackerApp({ profile, onSwitchProfile }) {
     { id: "tasks", label: "Tasks" },
     { id: "photos", label: "Photos" },
     { id: "diet", label: "Diet" },
+    { id: "hours", label: "Hours" },
   ];
 
   return (
@@ -566,6 +713,7 @@ function TrackerApp({ profile, onSwitchProfile }) {
       )}
       {tab === "photos" && <PhotoJournal photos={photos} setPhotos={setPhotos} />}
       {tab === "diet" && <DietSection diet={diet} setDiet={setDiet} />}
+      {tab === "hours" && <HonestHourSection hours={hours} setHours={setHours} />}
       <footer className="tg-footer"><Paw size={10} color="#4a4450" /> signed in as {profile} · data stays in this browser</footer>
     </div>
   );
@@ -716,6 +864,27 @@ const styles = `
 .diet-total-num { font-family: 'Fredoka', sans-serif; font-size: 28px; font-weight: 700; color: #fff; }
 .diet-total-label { font-size: 12px; color: #8a8490; }
 .diet-disclaimer { font-size: 11px; color: #6b6673; line-height: 1.5; margin: -4px 0 0; }
+.hour-list { display: flex; flex-direction: column; gap: 10px; }
+.hour-card { background: #100d13; border: 1.5px solid #221d23; border-radius: 14px; overflow: hidden; }
+.hour-card.reviewed { border-color: #4a1f34; }
+.hour-card-head { display: flex; align-items: center; gap: 8px; padding: 12px 12px; cursor: pointer; }
+.hour-card-title { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.hour-time { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #ff8fb3; }
+.hour-title-text { font-size: 14px; font-weight: 700; color: #f2eef1; }
+.hour-done-badge { font-size: 9px; font-weight: 700; text-transform: uppercase; color: #ff8fb3; background: #2a1520; padding: 3px 8px; border-radius: 10px; white-space: nowrap; }
+.hour-card-body { padding: 0 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.hour-field-label { font-size: 10.5px; color: #8a8490; text-transform: uppercase; letter-spacing: 0.03em; font-weight: 700; margin-top: 4px; }
+.hour-input { background: #171219; border: 1.5px solid #2a2030; border-radius: 8px; padding: 10px 12px; color: #f2eef1; font-family: 'Nunito', sans-serif; font-size: 13.5px; outline: none; width: 100%; }
+.hour-input:focus { border-color: #ff2d78; }
+.hour-textarea { background: #171219; border: 1.5px solid #2a2030; border-radius: 8px; padding: 10px 12px; color: #f2eef1; font-family: 'Nunito', sans-serif; font-size: 13.5px; outline: none; width: 100%; resize: vertical; }
+.hour-textarea:focus { border-color: #ff2d78; }
+.hour-items { display: flex; flex-direction: column; gap: 6px; }
+.hour-item-row { display: flex; align-items: center; gap: 8px; background: #171219; border: 1px solid #221d23; border-radius: 8px; padding: 8px 10px; font-size: 12.5px; }
+.hour-item-label { color: #ff8fb3; font-weight: 700; white-space: nowrap; }
+.hour-item-value { color: #c4bfc7; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.add-btn.small-add { padding: 8px; font-size: 12px; }
+.mark-reviewed-btn { display: flex; align-items: center; justify-content: center; gap: 6px; background: #171219; border: 1.5px solid #2a2030; color: #b8b3ba; border-radius: 10px; padding: 10px; font-weight: 700; font-size: 13px; cursor: pointer; margin-top: 4px; }
+.mark-reviewed-btn.active { background: #ff2d78; border-color: #ff2d78; color: #fff; }
 .tg-footer { display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 28px; font-size: 10px; color: #46414a; font-family: 'JetBrains Mono', monospace; }
 @media (min-width: 860px) {
   .tg-root { max-width: 720px; padding: 30px 40px 48px; }
