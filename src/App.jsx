@@ -1,68 +1,14 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Check, Plus, Flame, X, Calendar, Trash2, ChevronLeft, ChevronRight, HelpCircle, LogOut, Camera, Utensils, ImagePlus, Clock } from "lucide-react";
-
-const PROFILES_KEY = "toggle-profiles-v1";
-const dataKey = (name) => `toggle-data-${name}`;
-
-function todayISO(d = new Date()) {
-  const tz = d.getTimezoneOffset() * 60000;
-  return new Date(d - tz).toISOString().slice(0, 10);
-}
-function addDays(iso, n) {
-  const d = new Date(iso + "T00:00:00");
-  d.setDate(d.getDate() + n);
-  return todayISO(d);
-}
-function startOfWeek(iso) {
-  const d = new Date(iso + "T00:00:00");
-  const day = d.getDay();
-  d.setDate(d.getDate() + ((day === 0 ? -6 : 1) - day));
-  return todayISO(d);
-}
-function fmtDay(iso) {
-  return new Date(iso + "T00:00:00").toLocaleDateString(undefined, { weekday: "short" });
-}
-function fmtDate(iso) {
-  return new Date(iso + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-function monthGrid(iso) {
-  const d = new Date(iso + "T00:00:00");
-  const year = d.getFullYear(), month = d.getMonth();
-  const first = new Date(year, month, 1);
-  const startOffset = (first.getDay() + 6) % 7;
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells = [];
-  for (let i = 0; i < startOffset; i++) cells.push(null);
-  for (let day = 1; day <= daysInMonth; day++) cells.push(todayISO(new Date(year, month, day)));
-  return cells;
-}
-function monthLabel(iso) {
-  return new Date(iso + "T00:00:00").toLocaleDateString(undefined, { month: "long", year: "numeric" });
-}
+import { todayISO, addDays, startOfWeek, fmtDay, fmtDate, monthGrid, monthLabel } from "./lib/dates.js";
+import { estimateCalories } from "./lib/calories.js";
+import { loadProfiles, saveProfiles, loadProfileData, saveProfileData, tutorialSeenKey, estimateStorageUsedMB } from "./lib/storage.js";
 
 const PRIORITY = {
   high: { label: "High", color: "#ff2d78" },
   medium: { label: "Medium", color: "#ff8fb3" },
   low: { label: "Low", color: "#7a7480" },
 };
-
-const CALORIE_TABLE = [
-  ["banana", 105], ["apple", 95], ["egg", 78], ["fried egg", 90], ["boiled egg", 78],
-  ["rice", 205], ["chicken breast", 165], ["chicken", 220], ["pizza", 285], ["coffee", 5],
-  ["latte", 120], ["cappuccino", 100], ["salad", 150], ["sandwich", 350], ["burger", 550],
-  ["pasta", 220], ["yogurt", 100], ["greek yogurt", 130], ["oatmeal", 150], ["toast", 80],
-  ["avocado", 240], ["chocolate", 210], ["cookie", 150], ["protein shake", 200], ["water", 0],
-  ["pancake", 175], ["waffle", 220], ["bacon", 90], ["sausage", 150], ["cereal", 180],
-  ["milk", 103], ["orange", 62], ["steak", 420], ["fish", 200], ["salmon", 230],
-  ["soup", 170], ["fries", 365], ["chips", 150], ["nuts", 170], ["smoothie", 220],
-  ["bagel", 250], ["muffin", 340], ["donut", 260], ["ice cream", 210], ["beer", 150],
-  ["wine", 125], ["soda", 140], ["tea", 2], ["granola bar", 140], ["hummus", 70],
-];
-function estimateCalories(name) {
-  const n = name.toLowerCase();
-  for (const [key, cal] of CALORIE_TABLE) if (n.includes(key)) return cal;
-  return 250;
-}
 
 function Paw({ size = 14, filled = true, color = "#fff" }) {
   return (
@@ -126,24 +72,19 @@ function ProfileGate({ onEnter }) {
   const [mode, setMode] = useState("pick");
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(PROFILES_KEY);
-      setProfiles(raw ? JSON.parse(raw) : []);
-    } catch {
-      setProfiles([]);
-    }
+    setProfiles(loadProfiles());
   }, []);
 
-  function saveProfiles(list) {
+  function persistProfiles(list) {
     setProfiles(list);
-    localStorage.setItem(PROFILES_KEY, JSON.stringify(list));
+    saveProfiles(list);
   }
   function createProfile() {
     const trimmed = name.trim();
     if (!trimmed) return;
     if (profiles.some((p) => p.name.toLowerCase() === trimmed.toLowerCase())) return;
     const list = [...profiles, { name: trimmed, pin: pin.trim() }];
-    saveProfiles(list);
+    persistProfiles(list);
     onEnter(trimmed);
   }
   function enterProfile(p) {
@@ -230,12 +171,6 @@ function useIsWide() {
   return isWide;
 }
 
-function estimateStorageUsedMB() {
-  let total = 0;
-  for (const k in localStorage) if (localStorage.hasOwnProperty(k)) total += (localStorage[k].length + k.length) * 2;
-  return total / (1024 * 1024);
-}
-
 function PhotoJournal({ photos, setPhotos }) {
   const [monthAnchor, setMonthAnchor] = useState(todayISO());
   const [selected, setSelected] = useState(todayISO());
@@ -268,9 +203,9 @@ function PhotoJournal({ photos, setPhotos }) {
   return (
     <section className="tg-section">
       <div className="week-nav">
-        <button className="icon-btn" onClick={() => setMonthAnchor(addDays(startOfWeek(monthAnchor), -28))}><ChevronLeft size={17} /></button>
+        <button className="icon-btn" aria-label="Previous month" onClick={() => setMonthAnchor(addDays(startOfWeek(monthAnchor), -28))}><ChevronLeft size={17} /></button>
         <div className="week-range">{monthLabel(monthAnchor)}</div>
-        <button className="icon-btn" onClick={() => setMonthAnchor(addDays(monthAnchor, 28))}><ChevronRight size={17} /></button>
+        <button className="icon-btn" aria-label="Next month" onClick={() => setMonthAnchor(addDays(monthAnchor, 28))}><ChevronRight size={17} /></button>
       </div>
       {storageMB > 3.5 && (
         <div className="storage-warn">Local storage is getting full ({storageMB.toFixed(1)}MB of a ~5–10MB browser limit) — older photos may fail to save. Real long-term photo storage needs cloud storage, not just this browser.</div>
@@ -297,7 +232,7 @@ function PhotoJournal({ photos, setPhotos }) {
           {dayPhotos.map((p) => (
             <div key={p.id} className="photo-card">
               <img src={p.dataUrl} alt="" />
-              <button className="photo-remove" onClick={() => removePhoto(p.id)}><X size={12} /></button>
+              <button className="photo-remove" aria-label="Remove photo" onClick={() => removePhoto(p.id)}><X size={12} /></button>
               <input className="photo-note" placeholder="add a note…" value={p.note} onChange={(e) => updateNote(p.id, e.target.value)} />
             </div>
           ))}
@@ -343,7 +278,7 @@ function DietSection({ diet, setDiet }) {
               <div className="task-name">{e.name}</div>
               <div className="task-meta"><span className="due-chip">~{e.calories} kcal</span></div>
             </div>
-            <button className="delete-mini" onClick={() => removeEntry(e.id)}><Trash2 size={13} /></button>
+            <button className="delete-mini" aria-label={`Remove ${e.name}`} onClick={() => removeEntry(e.id)}><Trash2 size={13} /></button>
           </div>
         ))}
       </div>
@@ -372,7 +307,7 @@ function HourBlockCard({ block, onUpdate, onRemove, onAddItem, onRemoveItem }) {
           <span className="hour-title-text">{block.title}</span>
         </div>
         {block.done && <span className="hour-done-badge">reviewed</span>}
-        <button className="delete-mini" onClick={(e) => { e.stopPropagation(); onRemove(); }}><Trash2 size={13} /></button>
+        <button className="delete-mini" aria-label={`Delete hour: ${block.title}`} onClick={(e) => { e.stopPropagation(); onRemove(); }}><Trash2 size={13} /></button>
       </div>
       {expanded && (
         <div className="hour-card-body">
@@ -386,7 +321,7 @@ function HourBlockCard({ block, onUpdate, onRemove, onAddItem, onRemoveItem }) {
                 <div key={it.id} className="hour-item-row">
                   <span className="hour-item-label">{it.label}</span>
                   <span className="hour-item-value">{it.value}</span>
-                  <button className="delete-mini" onClick={() => onRemoveItem(it.id)}><Trash2 size={12} /></button>
+                  <button className="delete-mini" aria-label={`Remove ${it.label}`} onClick={() => onRemoveItem(it.id)}><Trash2 size={12} /></button>
                 </div>
               ))}
             </div>
@@ -462,9 +397,9 @@ function HonestHourSection({ hours, setHours }) {
   return (
     <section className="tg-section">
       <div className="week-nav">
-        <button className="icon-btn" onClick={() => setDayAnchor(addDays(dayAnchor, -1))}><ChevronLeft size={17} /></button>
+        <button className="icon-btn" aria-label="Previous day" onClick={() => setDayAnchor(addDays(dayAnchor, -1))}><ChevronLeft size={17} /></button>
         <div className="week-range">{fmtDate(dayAnchor)}{dayAnchor === todayISO() ? " · today" : ""}</div>
-        <button className="icon-btn" onClick={() => setDayAnchor(addDays(dayAnchor, 1))}><ChevronRight size={17} /></button>
+        <button className="icon-btn" aria-label="Next day" onClick={() => setDayAnchor(addDays(dayAnchor, 1))}><ChevronRight size={17} /></button>
         {dayAnchor !== todayISO() && <button className="today-btn" onClick={() => setDayAnchor(todayISO())}>today</button>}
       </div>
       <p className="diet-disclaimer">Pick one hour, decide what it's for, protect it, then tell yourself the truth about what happened. Add whatever you want to track inside each hour.</p>
@@ -496,7 +431,6 @@ function HonestHourSection({ hours, setHours }) {
 
 function TrackerApp({ profile, onSwitchProfile }) {
   const isWide = useIsWide();
-  const storageKey = dataKey(profile);
   const [ready, setReady] = useState(false);
   const [habits, setHabits] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -515,34 +449,27 @@ function TrackerApp({ profile, onSwitchProfile }) {
   const [showTutorial, setShowTutorial] = useState(false);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(storageKey);
-      const parsed = raw ? JSON.parse(raw) : {};
-      setHabits(parsed.habits || []);
-      setTasks(parsed.tasks || []);
-      setPhotos(parsed.photos || {});
-      setDiet(parsed.diet || {});
-      setHours(parsed.hours || {});
-    } catch {}
+    const data = loadProfileData(profile);
+    setHabits(data.habits);
+    setTasks(data.tasks);
+    setPhotos(data.photos);
+    setDiet(data.diet);
+    setHours(data.hours);
     setReady(true);
-    if (!localStorage.getItem(`toggle-seen-tutorial-${profile}`)) setShowTutorial(true);
-  }, [storageKey]);
+    if (!localStorage.getItem(tutorialSeenKey(profile))) setShowTutorial(true);
+  }, [profile]);
 
   useEffect(() => {
     if (!ready) return;
-    try {
-      localStorage.setItem(storageKey, JSON.stringify({ habits, tasks, photos, diet, hours }));
-    } catch (e) {
-      console.error("save failed — storage may be full", e);
-    }
-  }, [habits, tasks, photos, diet, hours, ready, storageKey]);
+    saveProfileData(profile, { habits, tasks, photos, diet, hours });
+  }, [habits, tasks, photos, diet, hours, ready, profile]);
 
   const today = todayISO();
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekAnchor, i)), [weekAnchor]);
 
   function closeTutorial() {
     setShowTutorial(false);
-    localStorage.setItem(`toggle-seen-tutorial-${profile}`, "1");
+    localStorage.setItem(tutorialSeenKey(profile), "1");
   }
   function addHabit() {
     if (!newHabitName.trim()) return;
@@ -609,8 +536,8 @@ function TrackerApp({ profile, onSwitchProfile }) {
       <header className="tg-header">
         <div className="tg-brand"><span className="tg-ear tg-ear-l" /><span className="tg-ear tg-ear-r" />Toggle</div>
         <div className="tg-header-actions">
-          <button className="icon-pill" onClick={() => setShowTutorial(true)} title="Replay tutorial"><HelpCircle size={16} /></button>
-          <button className="icon-pill" onClick={onSwitchProfile} title="Switch profile"><LogOut size={16} /></button>
+          <button className="icon-pill" aria-label="Replay tutorial" onClick={() => setShowTutorial(true)} title="Replay tutorial"><HelpCircle size={16} /></button>
+          <button className="icon-pill" aria-label="Switch profile" onClick={onSwitchProfile} title="Switch profile"><LogOut size={16} /></button>
           <CatMascot streak={bestStreak} size={60} />
         </div>
       </header>
@@ -626,9 +553,9 @@ function TrackerApp({ profile, onSwitchProfile }) {
       {tab === "habits" && (
         <section className="tg-section">
           <div className="week-nav">
-            <button className="icon-btn" onClick={() => setWeekAnchor(addDays(weekAnchor, -7))}><ChevronLeft size={17} /></button>
+            <button className="icon-btn" aria-label="Previous week" onClick={() => setWeekAnchor(addDays(weekAnchor, -7))}><ChevronLeft size={17} /></button>
             <div className="week-range">{fmtDate(weekDays[0])} – {fmtDate(weekDays[6])}</div>
-            <button className="icon-btn" onClick={() => setWeekAnchor(addDays(weekAnchor, 7))}><ChevronRight size={17} /></button>
+            <button className="icon-btn" aria-label="Next week" onClick={() => setWeekAnchor(addDays(weekAnchor, 7))}><ChevronRight size={17} /></button>
             {weekAnchor !== startOfWeek(today) && <button className="today-btn" onClick={() => setWeekAnchor(startOfWeek(today))}>today</button>}
           </div>
           {habits.length === 0 && <div className="empty-state"><p>No habits yet — nothing for the cat to watch. Add the first one below.</p></div>}
@@ -647,14 +574,20 @@ function TrackerApp({ profile, onSwitchProfile }) {
                       <div className="habit-meta">
                         {streak > 0 && <span className="streak-chip"><Flame size={11} /> {streak}</span>}
                         <span className="week-chip">{wk}/7</span>
-                        <button className="delete-mini" onClick={() => deleteHabit(h.id)}><Trash2 size={12} /></button>
+                        <button className="delete-mini" aria-label={`Delete habit: ${h.name}`} onClick={() => deleteHabit(h.id)}><Trash2 size={12} /></button>
                       </div>
                     </div>
                     {weekDays.map((iso) => {
                       const done = !!h.log[iso], future = iso > today;
                       return (
                         <div key={iso} className={"day-col" + (iso === today ? " is-today" : "")}>
-                          <button disabled={future} className={"paw-btn" + (done ? " checked" : "") + (future ? " future" : "")} onClick={() => toggleHabit(h.id, iso)}>
+                          <button
+                            disabled={future}
+                            aria-pressed={done}
+                            aria-label={`${h.name} — ${fmtDate(iso)}${done ? ", done" : ""}`}
+                            className={"paw-btn" + (done ? " checked" : "") + (future ? " future" : "")}
+                            onClick={() => toggleHabit(h.id, iso)}
+                          >
                             <Paw size={15} filled={done} color={done ? "#fff" : "#3a2836"} />
                           </button>
                         </div>
@@ -684,7 +617,7 @@ function TrackerApp({ profile, onSwitchProfile }) {
               const isOverdue = !t.done && t.due < today, isToday = t.due === today;
               return (
                 <div key={t.id} className={"task-row" + (t.done ? " done" : "")}>
-                  <button className={"paw-btn small" + (t.done ? " checked" : "")} onClick={() => toggleTask(t.id)}><Paw size={12} filled={t.done} color={t.done ? "#fff" : "#3a2836"} /></button>
+                  <button aria-pressed={t.done} aria-label={`Mark task ${t.done ? "not done" : "done"}: ${t.name}`} className={"paw-btn small" + (t.done ? " checked" : "")} onClick={() => toggleTask(t.id)}><Paw size={12} filled={t.done} color={t.done ? "#fff" : "#3a2836"} /></button>
                   <div className="task-body">
                     <div className="task-name">{t.name}</div>
                     <div className="task-meta">
@@ -692,7 +625,7 @@ function TrackerApp({ profile, onSwitchProfile }) {
                       <span className="priority-chip" style={{ "--pc": PRIORITY[t.priority].color }}>{PRIORITY[t.priority].label}</span>
                     </div>
                   </div>
-                  <button className="delete-mini" onClick={() => deleteTask(t.id)}><Trash2 size={13} /></button>
+                  <button className="delete-mini" aria-label={`Delete task: ${t.name}`} onClick={() => deleteTask(t.id)}><Trash2 size={13} /></button>
                 </div>
               );
             })}
