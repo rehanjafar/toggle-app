@@ -1,10 +1,10 @@
 # Toggle
 
-A single-page personal tracker — habits, one-off tasks, a daily photo journal, a rough calorie log, and an "Honest Hour" focus tracker — built with React and Vite, styled with a cat-themed black/hot-pink identity. Runs entirely client-side with no backend.
+A single-page personal tracker including habits, one-off tasks, a daily photo journal, a rough calorie log, and an "Honest Hour" focus tracker built with React and Vite, styled with a cat-themed design. Runs entirely client-side with no backend.
 
 ## Demo
 
-Not currently deployed at a stable public URL. Runs locally via the instructions below; `npm run build` produces a static site deployable to any static host (Vercel, Netlify, GitHub Pages).
+[Not currently deployed at a stable public URL. Runs locally via the instructions below; `npm run build` produces a static site deployable to any static host (Vercel, Netlify, GitHub Pages).](https://toggle-eta.vercel.app)
 
 ## Features
 
