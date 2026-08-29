@@ -4,7 +4,7 @@ A single-page personal tracker including habits, one-off tasks, a daily photo jo
 
 ## Demo
 
-[Not currently deployed at a stable public URL. Runs locally via the instructions below; `npm run build` produces a static site deployable to any static host (Vercel, Netlify, GitHub Pages).](https://toggle-eta.vercel.app)
+[https://toggle-eta.vercel.app]([url](https://toggle-eta.vercel.app)) or run this locally using the guide at the bottom
 
 ## Features
 
